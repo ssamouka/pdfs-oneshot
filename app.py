@@ -9,9 +9,12 @@ def extract_totals_from_pdf(pdf_file):
         for page in pdf.pages:
             text = page.extract_text()
             if text:
-                # Extract monetary values using regex
-                amounts = re.findall(r'\d+\.\d{2}', text)  # Matches numbers like 123.45
-                total_sum += sum(map(float, amounts))  # Convert and sum
+                # Search for "Montant total (TTC)" or "Prix" followed by a number
+                match = re.search(r'(Montant total \(TTC\)|Prix)[\s:]*([0-9,]+(?:\.[0-9]{1,2})?)', text)
+                if match:
+                    # Extract the matched amount and convert it to float
+                    amount_str = match.group(2).replace(',', '.')  # Replace comma with dot for float conversion
+                    total_sum += float(amount_str)
     return total_sum
 
 # Streamlit app
