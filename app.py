@@ -1,6 +1,8 @@
 import streamlit as st
 import pdfplumber
 import re
+import pandas as pd
+import io
 
 # Function to extract totals from PDF
 def extract_totals_from_pdf(pdf_file):
@@ -8,12 +10,15 @@ def extract_totals_from_pdf(pdf_file):
     page_totals = []  # List to store amounts from each page
     missing_pages = []  # List to store pages where no amount was found
     image_pages = []  # List to store pages with images or no text
+    page_data = []  # List to store data for CSV
+    
     with pdfplumber.open(pdf_file) as pdf:
         for page_num, page in enumerate(pdf.pages, start=1):
             text = page.extract_text()
             if not text:
                 # If no text is found, consider it as an image page
                 image_pages.append(page_num)
+                page_data.append([page_num, "", "À vérifier", "Page contains an image or non-text content"])
                 continue  # Skip processing this page
 
             # Search for any of the labels followed by a number
@@ -23,11 +28,13 @@ def extract_totals_from_pdf(pdf_file):
                 amount_str = match.group(2).replace(',', '.')  # Replace comma with dot for float conversion
                 amount = float(amount_str)
                 total_sum += amount
+                page_data.append([page_num, f"€{amount:,.2f}", "OK", ""])
                 page_totals.append((page_num, amount))  # Append page number and amount
             else:
                 missing_pages.append(page_num)  # Append page number where no match is found
+                page_data.append([page_num, "", "À vérifier", "No amount found"])
     
-    return total_sum, page_totals, missing_pages, image_pages
+    return total_sum, page_totals, missing_pages, image_pages, page_data
 
 # Streamlit app
 st.title("Invoice Total Summation App")
@@ -39,7 +46,7 @@ uploaded_file = st.file_uploader("Upload a PDF file containing invoices", type=[
 if uploaded_file is not None:
     st.info("Processing your file...")
     try:
-        total, page_totals, missing_pages, image_pages = extract_totals_from_pdf(uploaded_file)
+        total, page_totals, missing_pages, image_pages, page_data = extract_totals_from_pdf(uploaded_file)
         
         # Display the totals for each page
         st.write("Amounts extracted from each page:")
@@ -65,5 +72,21 @@ if uploaded_file is not None:
         if not missing_pages and not image_pages:
             st.info("All pages contained a valid amount.")
         
+        # Create a DataFrame from the page_data for CSV export
+        df = pd.DataFrame(page_data, columns=["Page", "Amount", "OK?", "Raison de refus"])
+        
+        # Convert the DataFrame to a CSV
+        csv_buffer = io.StringIO()
+        df.to_csv(csv_buffer, index=False)
+        csv_data = csv_buffer.getvalue()
+
+        # Provide a download button
+        st.download_button(
+            label="Download CSV",
+            data=csv_data,
+            file_name="invoice_totals.csv",
+            mime="text/csv"
+        )
+
     except Exception as e:
         st.error(f"An error occurred: {e}")
