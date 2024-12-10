@@ -10,8 +10,8 @@ def extract_totals_from_pdf(pdf_file):
         for page_num, page in enumerate(pdf.pages, start=1):
             text = page.extract_text()
             if text:
-                # Search for "Montant total (TTC)" or "Prix" followed by a number
-                match = re.search(r'(Montant total \(TTC\)|Prix)[\s:]*([0-9,]+(?:\.[0-9]{1,2})?)', text)
+                # Search for any of the labels followed by a number
+                match = re.search(r'(Montant total \(TTC\)|Prix|Montant TTC|Prix TTC|Montant de la transaction TTC)[\s:]*([0-9,]+(?:\.[0-9]{1,2})?)', text)
                 if match:
                     # Extract the matched amount and convert it to float
                     amount_str = match.group(2).replace(',', '.')  # Replace comma with dot for float conversion
@@ -35,9 +35,9 @@ if uploaded_file is not None:
         # Display the totals for each page
         st.write("Amounts extracted from each page:")
         for page_num, amount in page_totals:
-            st.write(f"Page {page_num}: ${amount:,.2f}")
+            st.write(f"Page {page_num}: €{amount:,.2f}")  # Use Euro symbol for each page amount
         
-        # Display the total sum
-        st.success(f"The total sum of all invoices in this document is: ${total:,.2f}")
+        # Display the total sum in euros
+        st.success(f"The total sum of all invoices in this document is: €{total:,.2f}")
     except Exception as e:
         st.error(f"An error occurred: {e}")
