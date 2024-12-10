@@ -12,7 +12,7 @@ def extract_totals_from_pdf(pdf_file):
             text = page.extract_text()
             if text:
                 # Search for any of the labels followed by a number
-                match = re.search(r'(Montant total \(TTC\)|Prix|Montant TTC|Prix TTC|Montant de la transaction TTC)[\s:]*([0-9,]+(?:\.[0-9]{1,2})?)', text)
+                match = re.search(r'(Montant total \(TTC\)|Prix|Montant TTC|Prix TTC|Montant de la transaction \(TTC\)|Montant du voyage|Total)[\s:]*([0-9,]+(?:\.[0-9]{1,2})?)', text)
                 if match:
                     # Extract the matched amount and convert it to float
                     amount_str = match.group(2).replace(',', '.')  # Replace comma with dot for float conversion
