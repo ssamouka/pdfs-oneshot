@@ -50,7 +50,7 @@ def extract_totals_from_pdf(pdf_file):
             if not text:
                 # If no text is found, consider it as an image page
                 image_pages.append(page_num)
-                page_data.append([page_num, "", "À vérifier", "Page contains an image or non-text content", "Unknown"])
+                page_data.append([page_num, "", "À vérifier", "Page contains an image or non-text content", "Unknown", False])
                 continue  # Skip processing this page
 
             # Classify the document type
@@ -63,11 +63,11 @@ def extract_totals_from_pdf(pdf_file):
                 amount_str = match.group(2).replace(',', '.')  # Replace comma with dot for float conversion
                 amount = float(amount_str)
                 total_sum += amount
-                page_data.append([page_num, f"€{amount:,.2f}", "OK", "", doc_type])
+                page_data.append([page_num, f"€{amount:,.2f}", "OK", "", doc_type, False])
                 page_totals.append((page_num, amount))  # Append page number and amount
             else:
                 missing_pages.append(page_num)  # Append page number where no match is found
-                page_data.append([page_num, "", "À vérifier", "No amount found", doc_type])
+                page_data.append([page_num, "", "À vérifier", "No amount found", doc_type, False])
     
     return total_sum, page_totals, missing_pages, image_pages, page_data
 
@@ -83,6 +83,13 @@ if uploaded_file is not None:
     try:
         total, page_totals, missing_pages, image_pages, page_data = extract_totals_from_pdf(uploaded_file)
         
+        # Create a DataFrame from the page_data
+        df = pd.DataFrame(page_data, columns=["Page", "Amount", "OK?", "Raison de refus", "Document Type", "Duplicate"])
+        
+        # Identify duplicates based on Amount and Document Type
+        duplicate_mask = df.duplicated(subset=["Amount", "Document Type"], keep=False)
+        df["Duplicate"] = duplicate_mask
+
         # Display the totals for each page
         st.write("Amounts extracted from each page:")
         for page_num, amount in page_totals:
@@ -103,19 +110,11 @@ if uploaded_file is not None:
             for page_num in image_pages:
                 st.write(f"Page {page_num}")
         
-        # If no pages are missing or have images, show success message
-        if not missing_pages and not image_pages:
-            st.info("All pages contained a valid amount.")
-        
-        # Create a DataFrame from the page_data for CSV export
-        df = pd.DataFrame(page_data, columns=["Page", "Amount", "OK?", "Raison de refus", "Document Type"])
-        
-        # Highlight duplicates in the DataFrame
-        duplicates = df[df.duplicated(subset=["Amount", "Document Type"], keep=False)]
-        if not duplicates.empty:
+        # Highlight duplicates in the app
+        if duplicate_mask.any():
             st.warning("The following rows are potential duplicates:")
-            st.dataframe(duplicates)
-
+            st.dataframe(df[df["Duplicate"]])
+        
         # Convert the DataFrame to a CSV
         csv_buffer = io.StringIO()
         df.to_csv(csv_buffer, index=False)
