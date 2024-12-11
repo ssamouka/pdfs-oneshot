@@ -44,7 +44,7 @@ def classify_document(text):
         return "Péage Receipt"
     
     # Essence (Fuel)
-    elif ("total" in text_lower or "e.leclerc" in text_lower or "carrefour" in text_lower or 
+    elif ("totalenergies" in text_lower or "e.leclerc" in text_lower or "carrefour" in text_lower or 
           "auchan" in text_lower or "essence" in text_lower or "fuel" in text_lower):
         return "Essence Receipt"
     
