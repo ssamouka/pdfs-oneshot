@@ -3,6 +3,24 @@ import pdfplumber
 import re
 import pandas as pd
 import io
+import hashlib
+
+# Function to calculate hash of a string
+def calculate_hash(content):
+    return hashlib.md5(content.encode('utf-8')).hexdigest()
+
+# Function to classify the document type
+def classify_document(text):
+    if "train" in text.lower() or "voyage" in text.lower():
+        return "Train Booking"
+    elif "flight" in text.lower() or "boarding pass" in text.lower():
+        return "Plane Ticket"
+    elif "hotel" in text.lower():
+        return "Hotel Booking"
+    elif "metro" in text.lower() or "bus" in text.lower():
+        return "Public Transport Ticket"
+    else:
+        return "Unknown"
 
 # Function to extract totals from PDF
 def extract_totals_from_pdf(pdf_file):
@@ -11,6 +29,7 @@ def extract_totals_from_pdf(pdf_file):
     missing_pages = []  # List to store pages where no amount was found
     image_pages = []  # List to store pages with images or no text
     page_data = []  # List to store data for CSV
+    seen_hashes = set()  # To detect duplicate pages
     
     with pdfplumber.open(pdf_file) as pdf:
         for page_num, page in enumerate(pdf.pages, start=1):
@@ -18,9 +37,16 @@ def extract_totals_from_pdf(pdf_file):
             if not text:
                 # If no text is found, consider it as an image page
                 image_pages.append(page_num)
-                page_data.append([page_num, "", "À vérifier", "Page contains an image or non-text content"])
+                page_data.append([page_num, "", "À vérifier", "Page contains an image or non-text content", "No", "Unknown"])
                 continue  # Skip processing this page
-
+            
+            # Check for duplicates
+            page_hash = calculate_hash(text)
+            if page_hash in seen_hashes:
+                page_data.append([page_num, "", "À vérifier", "Duplicate page", "Yes", classify_document(text)])
+                continue
+            seen_hashes.add(page_hash)
+            
             # Search for any of the labels followed by a number
             match = re.search(r'(Montant total \(TTC\)|Prix|Montant TTC|Prix TTC|Montant du voyage|Total)[\s:]*([0-9,]+(?:\.[0-9]{1,2})?)', text)
             if match:
@@ -28,11 +54,11 @@ def extract_totals_from_pdf(pdf_file):
                 amount_str = match.group(2).replace(',', '.')  # Replace comma with dot for float conversion
                 amount = float(amount_str)
                 total_sum += amount
-                page_data.append([page_num, f"€{amount:,.2f}", "OK", ""])
+                page_data.append([page_num, f"€{amount:,.2f}", "OK", "", "No", classify_document(text)])
                 page_totals.append((page_num, amount))  # Append page number and amount
             else:
                 missing_pages.append(page_num)  # Append page number where no match is found
-                page_data.append([page_num, "", "À vérifier", "No amount found"])
+                page_data.append([page_num, "", "À vérifier", "No amount found", "No", classify_document(text)])
     
     return total_sum, page_totals, missing_pages, image_pages, page_data
 
@@ -73,7 +99,10 @@ if uploaded_file is not None:
             st.info("All pages contained a valid amount.")
         
         # Create a DataFrame from the page_data for CSV export
-        df = pd.DataFrame(page_data, columns=["Page", "Amount", "OK?", "Raison de refus"])
+        df = pd.DataFrame(page_data, columns=["Page", "Amount", "OK?", "Raison de refus", "Duplicate?", "Document Type"])
+        
+        # Display the data in a table format
+        st.dataframe(df)
         
         # Convert the DataFrame to a CSV
         csv_buffer = io.StringIO()
