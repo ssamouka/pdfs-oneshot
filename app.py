@@ -73,10 +73,10 @@ def extract_totals_from_pdf(pdf_file):
             doc_type = classify_document(text)
             
             # Search for the total amount paid (in French and English)
-            match = re.search(r'(\b(Montant\s*total|Prix\s*total|Montant\s*TTC|Prix\s*TTC|Montant\s*du\s*voyage|Total\s*à\s*payer|Amount\s*paid|Total\s*amount|Total\s*price|Price\s*paid|Total\s*voyageur\s*(trajet\s*\+\s*options)?|NET\s*A\s*PAYER\s*TTC)[\s:]*[\(\[]?\s*([0-9,]+(?:\.[0-9]{1,2})?)(\s*€|\s*\$|\s*£|\s*[A-Za-z]{3})?\s*[\)\]]?)', text)
+            match = re.search(r'(Montant total \(TTC\)|Prix|Montant TTC|Prix TTC|Montant du voyage|Total|Total voyageur \(trajet \+ options\)|NET A PAYER TTC)[\s:]*([0-9,]+(?:\.[0-9]{1,2})?)', text)
             if match:
                 # Extract the matched amount and convert it to float
-                amount_str = match.group(3).replace(',', '.')  # Replace comma with dot for float conversion
+                amount_str = match.group(2).replace(',', '.')  # Replace comma with dot for float conversion
                 amount = float(amount_str)
                 total_sum += amount
                 page_data.append([page_num, f"€{amount:,.2f}", "OK", "", doc_type, False])
