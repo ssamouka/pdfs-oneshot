@@ -3,6 +3,7 @@ import pdfplumber
 import re
 import pandas as pd
 import io
+from datetime import datetime
 
 # Function to classify the document type
 def classify_document(text):
@@ -32,11 +33,26 @@ def classify_document(text):
           "bateau" in text_lower or "navette" in text_lower):
         return "Boat/Ferry"
     
+    # Parking
+    elif ("paybyphone" in text_lower or "indigo" in text_lower or "parc" in text_lower or 
+          "stationnement" in text_lower or "parking" in text_lower or "apark" in text_lower):
+        return "Parking Receipt"
+    
+    # Péage (Toll)
+    elif ("ulys" in text_lower or "vinci" in text_lower or "peage" in text_lower or 
+          "toll" in text_lower or "péage" in text_lower or "autoroute" in text_lower):
+        return "Péage Receipt"
+    
+    # Essence (Fuel)
+    elif ("total" in text_lower or "e.leclerc" in text_lower or "carrefour" in text_lower or 
+          "auchan" in text_lower or "essence" in text_lower or "fuel" in text_lower):
+        return "Essence Receipt"
+    
     # Unknown
     else:
         return "Unknown"
 
-# Function to extract totals from PDF
+# Function to extract totals and date from PDF
 def extract_totals_from_pdf(pdf_file):
     total_sum = 0
     page_totals = []  # List to store amounts from each page
@@ -44,18 +60,28 @@ def extract_totals_from_pdf(pdf_file):
     image_pages = []  # List to store pages with images or no text
     page_data = []  # List to store data for CSV
     
+    # Regex pattern to extract date
+    date_pattern = r'(\d{1,2}[-/]\d{1,2}[-/]\d{2,4}|\d{4}[-/]\d{2}[-/]\d{2})'  # Matches common date formats
+
     with pdfplumber.open(pdf_file) as pdf:
         for page_num, page in enumerate(pdf.pages, start=1):
             text = page.extract_text()
             if not text:
                 # If no text is found, consider it as an image page
                 image_pages.append(page_num)
-                page_data.append([page_num, "", "À vérifier", "Page contains an image or non-text content", "Unknown", False])
+                page_data.append([page_num, "", "À vérifier", "Page contains an image or non-text content", "Unknown", "", False])
                 continue  # Skip processing this page
 
             # Classify the document type
             doc_type = classify_document(text)
-
+            
+            # Attempt to extract a date
+            date_match = re.search(date_pattern, text)
+            if date_match:
+                date = date_match.group(0)
+            else:
+                date = "Unknown"  # If no date is found, set to Unknown
+            
             # Search for any of the labels followed by a number
             match = re.search(r'(Montant total \(TTC\)|Prix|Montant TTC|Prix TTC|Montant du voyage|Total)[\s:]*([0-9,]+(?:\.[0-9]{1,2})?)', text)
             if match:
@@ -63,11 +89,11 @@ def extract_totals_from_pdf(pdf_file):
                 amount_str = match.group(2).replace(',', '.')  # Replace comma with dot for float conversion
                 amount = float(amount_str)
                 total_sum += amount
-                page_data.append([page_num, f"€{amount:,.2f}", "OK", "", doc_type, False])
+                page_data.append([page_num, f"€{amount:,.2f}", "OK", "", doc_type, date, False])
                 page_totals.append((page_num, amount))  # Append page number and amount
             else:
                 missing_pages.append(page_num)  # Append page number where no match is found
-                page_data.append([page_num, "", "À vérifier", "No amount found", doc_type, False])
+                page_data.append([page_num, "", "À vérifier", "No amount found", doc_type, date, False])
     
     return total_sum, page_totals, missing_pages, image_pages, page_data
 
@@ -84,10 +110,10 @@ if uploaded_file is not None:
         total, page_totals, missing_pages, image_pages, page_data = extract_totals_from_pdf(uploaded_file)
         
         # Create a DataFrame from the page_data
-        df = pd.DataFrame(page_data, columns=["Page", "Amount", "OK?", "Raison de refus", "Document Type", "Duplicate"])
+        df = pd.DataFrame(page_data, columns=["Page", "Amount", "OK?", "Raison de refus", "Document Type", "Date", "Duplicate"])
         
-        # Identify duplicates based on Amount and Document Type
-        duplicate_mask = df.duplicated(subset=["Amount", "Document Type"], keep=False)
+        # Identify duplicates based on Amount, Document Type, and Date
+        duplicate_mask = df.duplicated(subset=["Amount", "Document Type", "Date"], keep=False)
         df["Duplicate"] = duplicate_mask
 
         # Display the totals for each page
