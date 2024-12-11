@@ -72,11 +72,11 @@ def extract_totals_from_pdf(pdf_file):
             # Classify the document type
             doc_type = classify_document(text)
             
-            # Search for any of the labels followed by a number (amount)
-            match = re.search(r'(Montant total \(TTC\)|Prix|Montant TTC|Prix TTC|Montant du voyage|Total)[\s:]*([0-9,]+(?:\.[0-9]{1,2})?)', text)
+            # Search for the total amount paid (in French and English)
+            match = re.search(r'(\b(Montant\s*total|Prix\s*total|Montant\s*TTC|Prix\s*TTC|Montant\s*du\s*voyage|Total\s*à\s*payer|Amount\s*paid|Total\s*amount|Total\s*price|Price\s*paid|Total\s*voyageur\s*(trajet\s*\+\s*options)?|NET\s*A\s*PAYER\s*TTC)[\s:]*[\(\[]?\s*([0-9,]+(?:\.[0-9]{1,2})?)(\s*€|\s*\$|\s*£|\s*[A-Za-z]{3})?\s*[\)\]]?)', text)
             if match:
                 # Extract the matched amount and convert it to float
-                amount_str = match.group(2).replace(',', '.')  # Replace comma with dot for float conversion
+                amount_str = match.group(3).replace(',', '.')  # Replace comma with dot for float conversion
                 amount = float(amount_str)
                 total_sum += amount
                 page_data.append([page_num, f"€{amount:,.2f}", "OK", "", doc_type, False])
@@ -99,12 +99,12 @@ if uploaded_file is not None:
     try:
         total, page_totals, missing_pages, image_pages, page_data = extract_totals_from_pdf(uploaded_file)
         
-        # Create a DataFrame from the page_data
-        df = pd.DataFrame(page_data, columns=["Page", "Amount", "OK?", "Raison de refus", "Document Type", "Duplicate"])
+        # Create a DataFrame from the page_data with updated column names
+        df = pd.DataFrame(page_data, columns=["Page", "Montant", "Montant OK?", "Justif à vérifier pourquoi?", "Type de dépense", "Doublons?"])
         
         # Identify duplicates based on Amount and Document Type
-        duplicate_mask = df.duplicated(subset=["Amount", "Document Type"], keep=False)
-        df["Duplicate"] = duplicate_mask
+        duplicate_mask = df.duplicated(subset=["Montant", "Type de dépense"], keep=False)
+        df["Doublons?"] = duplicate_mask
 
         # Display the totals for each page
         st.write("Amounts extracted from each page:")
@@ -129,7 +129,7 @@ if uploaded_file is not None:
         # Highlight duplicates in the app
         if duplicate_mask.any():
             st.warning("The following rows are potential duplicates and need to be checked manually:")
-            st.dataframe(df[df["Duplicate"]])
+            st.dataframe(df[df["Doublons?"]])
         
         # Convert the DataFrame to a CSV
         csv_buffer = io.StringIO()
