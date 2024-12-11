@@ -3,22 +3,36 @@ import pdfplumber
 import re
 import pandas as pd
 import io
-import hashlib
-
-# Function to calculate hash of a string
-def calculate_hash(content):
-    return hashlib.md5(content.encode('utf-8')).hexdigest()
 
 # Function to classify the document type
 def classify_document(text):
-    if "train" in text.lower() or "voyage" in text.lower():
+    text_lower = text.lower()
+    
+    # Taxi services
+    if "g7" in text_lower or "uber" in text_lower or "bolt" in text_lower or "cabify" in text_lower:
+        return "Taxi Receipt"
+    
+    # Train bookings
+    elif ("train" in text_lower or "voyage" in text_lower or "billet" in text_lower or 
+          "sncf" in text_lower or "tgv" in text_lower or "intercités" in text_lower):
         return "Train Booking"
-    elif "flight" in text.lower() or "boarding pass" in text.lower():
+    
+    # Plane tickets
+    elif ("flight" in text_lower or "boarding pass" in text_lower or "vol" in text_lower or 
+          "carte d'embarquement" in text_lower or "avion" in text_lower):
         return "Plane Ticket"
-    elif "hotel" in text.lower():
-        return "Hotel Booking"
-    elif "metro" in text.lower() or "bus" in text.lower():
+    
+    # Public transport
+    elif ("metro" in text_lower or "métro" in text_lower or "bus" in text_lower or "ticket de transport" in text_lower or 
+          "tram" in text_lower or "tramway" in text_lower):
         return "Public Transport Ticket"
+    
+    # Boat/Ferry
+    elif ("boat" in text_lower or "ferry" in text_lower or "ferries" in text_lower or 
+          "bateau" in text_lower or "navette" in text_lower):
+        return "Boat/Ferry"
+    
+    # Unknown
     else:
         return "Unknown"
 
@@ -29,7 +43,6 @@ def extract_totals_from_pdf(pdf_file):
     missing_pages = []  # List to store pages where no amount was found
     image_pages = []  # List to store pages with images or no text
     page_data = []  # List to store data for CSV
-    seen_hashes = set()  # To detect duplicate pages
     
     with pdfplumber.open(pdf_file) as pdf:
         for page_num, page in enumerate(pdf.pages, start=1):
@@ -37,16 +50,12 @@ def extract_totals_from_pdf(pdf_file):
             if not text:
                 # If no text is found, consider it as an image page
                 image_pages.append(page_num)
-                page_data.append([page_num, "", "À vérifier", "Page contains an image or non-text content", "No", "Unknown"])
+                page_data.append([page_num, "", "À vérifier", "Page contains an image or non-text content", "Unknown"])
                 continue  # Skip processing this page
-            
-            # Check for duplicates
-            page_hash = calculate_hash(text)
-            if page_hash in seen_hashes:
-                page_data.append([page_num, "", "À vérifier", "Duplicate page", "Yes", classify_document(text)])
-                continue
-            seen_hashes.add(page_hash)
-            
+
+            # Classify the document type
+            doc_type = classify_document(text)
+
             # Search for any of the labels followed by a number
             match = re.search(r'(Montant total \(TTC\)|Prix|Montant TTC|Prix TTC|Montant du voyage|Total)[\s:]*([0-9,]+(?:\.[0-9]{1,2})?)', text)
             if match:
@@ -54,11 +63,11 @@ def extract_totals_from_pdf(pdf_file):
                 amount_str = match.group(2).replace(',', '.')  # Replace comma with dot for float conversion
                 amount = float(amount_str)
                 total_sum += amount
-                page_data.append([page_num, f"€{amount:,.2f}", "OK", "", "No", classify_document(text)])
+                page_data.append([page_num, f"€{amount:,.2f}", "OK", "", doc_type])
                 page_totals.append((page_num, amount))  # Append page number and amount
             else:
                 missing_pages.append(page_num)  # Append page number where no match is found
-                page_data.append([page_num, "", "À vérifier", "No amount found", "No", classify_document(text)])
+                page_data.append([page_num, "", "À vérifier", "No amount found", doc_type])
     
     return total_sum, page_totals, missing_pages, image_pages, page_data
 
@@ -99,11 +108,14 @@ if uploaded_file is not None:
             st.info("All pages contained a valid amount.")
         
         # Create a DataFrame from the page_data for CSV export
-        df = pd.DataFrame(page_data, columns=["Page", "Amount", "OK?", "Raison de refus", "Duplicate?", "Document Type"])
+        df = pd.DataFrame(page_data, columns=["Page", "Amount", "OK?", "Raison de refus", "Document Type"])
         
-        # Display the data in a table format
-        st.dataframe(df)
-        
+        # Highlight duplicates in the DataFrame
+        duplicates = df[df.duplicated(subset=["Amount", "Document Type"], keep=False)]
+        if not duplicates.empty:
+            st.warning("The following rows are potential duplicates:")
+            st.dataframe(duplicates)
+
         # Convert the DataFrame to a CSV
         csv_buffer = io.StringIO()
         df.to_csv(csv_buffer, index=False)
